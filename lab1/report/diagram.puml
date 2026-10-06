@@ -1,0 +1,87 @@
+﻿@startuml
+
+skinparam classAttributeIconSize 0
+
+    class MainForm {
+        - controller : ExcuseController
+        - inputForm : InputForm
+
+        + ShowSituation()
+        + ShowUserData()
+        + ShowExcuse()
+        + ShowError()
+        + OpenInputForm()
+        + ModelChanged()
+    }
+
+    class InputForm {
+        - userData : UserData
+
+        + GetUserData()
+        + ShowError()
+    }
+
+
+    class ExcuseController {
+        - model : ExcuseModel
+        - view : MainForm
+
+        + SetSituation()
+        + SaveUserData()
+        + GenerateExcuse()
+    }
+
+    class ExcuseModel {
+        - situation : Situation
+        - userData : UserData
+        - excuse : string
+
+        + SetSituation()
+        + SetUserData()
+        + GenerateExcuse()
+        + GetSituation()
+        + GetUserData()
+        + GetExcuse()
+    }
+
+    class UserData {
+        + Name : string
+        + Details : string
+        + Gender : Gender
+    }
+
+    enum Gender {
+        Male
+        Female
+    }
+
+    enum Situation {
+        Study
+        Work
+        Late
+        Forgetfulness
+    }
+
+    interface IModelListener {
+        + ModelChanged()
+    }
+
+MainForm --> ExcuseController : действия пользователя
+ExcuseController --> ExcuseModel : команды
+ExcuseController --> MainForm : обновление View
+
+MainForm --> InputForm : открывает
+InputForm --> UserData : формирует
+
+ExcuseModel *-- UserData
+UserData --> Gender
+ExcuseModel --> Situation
+
+ExcuseModel ..> IModelListener : уведомляет
+MainForm ..|> IModelListener : наблюдает
+
+MainForm -[hidden]down-> InputForm
+MainForm -[hidden]right-> ExcuseController
+ExcuseController -[hidden]right-> ExcuseModel
+
+@enduml
