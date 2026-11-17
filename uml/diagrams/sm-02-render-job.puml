@@ -1,0 +1,61 @@
+@startuml sm-02-render-job
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam style strictuml
+skinparam linetype polyline
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowFontColor #000000
+skinparam TitleFontColor #000000
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #000000
+skinparam NoteFontColor #000000
+skinparam state {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  StartColor #000000
+  EndColor #000000
+}
+title SM-02. Диаграмма состояний: задание рендеринга в Typst Renderer
+hide empty description
+
+[*] --> Received : POST /internal/v1/render
+state Received : запрос принят,\nсоздан requestId
+state Validating : entry / проверить токен, templateId (allow-list),\nманифест, размер и тип портрета
+state WaitingForSlot : ожидание слота компиляции\n(лимит typst.max-concurrent = 4)
+state Rejected : ответ 400, 401, 413, 422 или 503\nбез запуска Typst
+
+state Job {
+  state Prepared : entry / createUnique(), копировать шаблон,\nзаписать data.json, assets, render.json
+  state Compiling : entry / typst compile\n(root, font-path, без системных шрифтов) (таймаут 12 с)
+  state Finalizing : entry / PdfMetadataFinalizer: Title, Creator,\nпроверка %PDF-, версии и размера
+  [*] --> Prepared
+  Prepared --> Compiling : файлы записаны
+  Compiling --> Finalizing : exitCode = 0 и result.pdf существует
+}
+Job : exit / WorkspaceManager.delete(job)
+
+state Completed : ответ 200 application/pdf
+state Failed : ответ 500, диагностика без пользовательских данных
+state TimedOut : процесс остановлен, ответ 504
+
+Received --> Validating
+Validating --> Rejected : данные недопустимы
+Validating --> WaitingForSlot : данные допустимы
+WaitingForSlot --> Rejected : слот недоступен
+WaitingForSlot --> Job : слот получен
+Prepared --> Failed : ошибка записи
+Compiling --> TimedOut : время > 12 с
+Compiling --> Failed : exitCode != 0
+Finalizing --> Completed : PDF корректен
+Finalizing --> Failed : PDF некорректен
+
+Rejected --> [*]
+Completed --> [*]
+Failed --> [*]
+TimedOut --> [*]
+@enduml

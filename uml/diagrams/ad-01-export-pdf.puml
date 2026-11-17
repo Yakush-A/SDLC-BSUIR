@@ -1,0 +1,120 @@
+@startuml ad-01-export-pdf
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam style strictuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowFontColor #000000
+skinparam TitleFontColor #000000
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #000000
+skinparam NoteFontColor #000000
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityBorderColor #000000
+skinparam ActivityFontColor #000000
+skinparam ActivityDiamondBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #000000
+skinparam ActivityDiamondFontColor #000000
+skinparam SwimlaneBorderColor #000000
+skinparam SwimlaneTitleBackgroundColor #FFFFFF
+skinparam SwimlaneTitleFontColor #000000
+skinparam SwimlaneTitleFontStyle bold
+title AD-01. Диаграмма активности: экспорт листа персонажа в PDF (UC-01)
+
+|Игрок|
+start
+:Нажать «Export to PDF»;
+
+|Frontend|
+if (Кнопка активна?) then (нет)
+  :Игнорировать нажатие;
+  stop
+else (да)
+endif
+
+if (Доступен File System Access API?) then (да)
+  :Открыть диалог сохранения;
+  |Игрок|
+  :Выбрать файл\nили отменить диалог;
+  |Frontend|
+  if (Файл выбран?) then (нет)
+    :Вернуть idle;
+    stop
+  else (да)
+  endif
+else (нет)
+  :Включить режим\n<a download>;
+endif
+
+:Сохранить отложенные правки листа;
+if (Правки сохранены?) then (нет)
+  (E)
+  detach
+else (да)
+endif
+:GET /api/v1/characters/{id}/export/pdf (JWT);
+
+|Backend|
+if (JWT и владелец допустимы?) then (нет)
+  :401 или 404;
+  (E)
+  detach
+else (да)
+endif
+if (Слот генерации получен?) then (нет)
+  :503;
+  (E)
+  detach
+else (да)
+endif
+:Получить данные, построить SheetModel\nи подготовить портрет;
+note right
+  5 с, 5 МБ, до 3 перенаправлений;
+  при ошибке — заглушка
+end note
+:POST /internal/v1/render;
+
+|Typst Renderer|
+if (Манифест и слот компиляции допустимы?) then (нет)
+  :4xx или 503;
+  (E)
+  detach
+else (да)
+endif
+:Создать рабочий каталог\nи подготовить data.json;
+:typst compile (таймаут 12 с);
+if (Компиляция и PDF корректны?) then (нет)
+  :500 или 504;\nудалить каталог;
+  (E)
+  detach
+else (да)
+endif
+:200 + PDF;\nудалить каталог;
+
+|Backend|
+:Записать метрики и журнал,\nвернуть 200;
+
+|Frontend|
+:Записать PDF\n(createWritable или <a download>);
+if (Запись успешна?) then (нет)
+  :abort();
+  (E)
+  detach
+else (да)
+endif
+:Toast «PDF сохранён»;\nвернуть idle;
+
+|Игрок|
+:Получить файл PDF;
+stop
+
+|Frontend|
+(E)
+:abort(), если запись открыта;
+:Toast «Не удалось создать PDF.\nПовторите попытку.»;
+:Вернуть idle;
+stop
+@enduml

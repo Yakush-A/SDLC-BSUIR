@@ -1,0 +1,56 @@
+@startuml sm-01-export-button
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam style strictuml
+skinparam linetype polyline
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowFontColor #000000
+skinparam TitleFontColor #000000
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #000000
+skinparam NoteFontColor #000000
+skinparam state {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  FontColor #000000
+  StartColor #000000
+  EndColor #000000
+}
+title SM-01. Диаграмма состояний: кнопка «Export to PDF» (ExportPdfButton)
+hide empty description
+
+[*] --> Disabled : компонент создан,\nперсонаж не загружен
+
+state Disabled : кнопка неактивна
+state Idle : кнопка «Export to PDF» активна
+state ChoosingLocation : диалог showSaveFilePicker\nentry / открыть диалог с именем по REQ-FUNC-005
+
+state Busy {
+  state Preparing : entry / сохранить отложенные правки
+  state Generating : кнопка «Generating…»\nentry / GET /api/v1/characters/{id}/export/pdf
+  state Writing : entry / createWritable().write(blob).close()\nили <a download>
+  Busy : ClickExport / игнорировать
+
+  [*] --> Preparing
+  Preparing --> Generating : EditsSaved
+  Generating --> Writing : PdfReceived
+}
+
+state Failed : toast «Не удалось создать PDF.\nПовторите попытку.»\nentry / abort() открытой записи
+
+Disabled --> Idle : CharacterLoaded
+Idle --> Disabled : CharacterUnloaded
+Idle --> ChoosingLocation : ClickExport\n[showSaveFilePicker поддерживается]
+Idle --> Busy : ClickExport\n[API не поддерживается]
+ChoosingLocation --> Idle : UserCancelled
+ChoosingLocation --> Busy : LocationChosen
+Busy --> Idle : FileWritten / toast «PDF сохранён»
+Preparing --> Failed : Error (правки не сохранены)
+Generating --> Failed : Error (401, 404, 503, 504, 500, сеть)
+Writing --> Failed : WriteError
+Failed --> Idle : Dismiss / таймаут уведомления
+@enduml

@@ -1,0 +1,71 @@
+@startuml uc-01-use-case
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam style strictuml
+skinparam linetype ortho
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowFontColor #000000
+skinparam TitleFontColor #000000
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #000000
+skinparam NoteFontColor #000000
+skinparam packageStyle rectangle
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorBorderColor #000000
+skinparam ActorFontColor #000000
+skinparam UsecaseBackgroundColor #FFFFFF
+skinparam UsecaseBorderColor #000000
+skinparam UsecaseFontColor #000000
+skinparam RectangleBackgroundColor #FFFFFF
+skinparam RectangleBorderColor #000000
+skinparam RectangleFontColor #000000
+title UC-00. Диаграмма вариантов использования: Sheet Export (Live D&D List)
+
+actor "Игрок" as Player
+actor "Разработчик" as Dev
+actor "Оператор" as Ops
+rectangle "Typst Renderer\n<<system>>" as Renderer
+rectangle "Хост портрета\n<<system>>" as Host
+
+rectangle "Sheet Export (backend + frontend Live D&D List)" {
+  usecase "UC-01\nЭкспортировать лист\nперсонажа в PDF" as UC01
+  usecase "UC-02\nВыбрать место\nсохранения" as UC02
+  usecase "UC-03\nСохранить отложенные\nправки листа" as UC03
+  usecase "UC-04\nСформировать PDF" as UC04
+  usecase "UC-05\nПодготовить портрет" as UC05
+  usecase "UC-06\nСохранить PDF стандартным\nскачиванием" as UC06
+  usecase "UC-07\nПоказать ошибку\nэкспорта" as UC07
+  usecase "UC-08\nПодключить игровую\nсистему" as UC08
+  usecase "UC-09\nПроверить готовность\nсервиса генерации" as UC09
+  usecase "UC-10\nПросмотреть метрики\nи журнал экспорта" as UC10
+}
+
+Player --> UC01
+Dev --> UC08
+Ops --> UC09
+Ops --> UC10
+
+UC01 ..> UC02 : <<include>>
+UC01 ..> UC03 : <<include>>
+UC01 ..> UC04 : <<include>>
+UC05 .up.> UC04 : <<extend>>\n[задан portraitUrl]
+UC06 .up.> UC02 : <<extend>>\n[нет File System Access API]
+UC07 .up.> UC01 : <<extend>>\n[ошибка на любом шаге]
+
+UC04 --> Renderer
+UC05 --> Host
+
+note bottom of UC10
+  Приоритет 50 (backlog):
+  метрики и журнал, REQ-OBS-001, 002
+end note
+note as N1
+  Мастер игры получает PDF вне системы
+  и с системой не взаимодействует,
+  поэтому на диаграмме не показан.
+end note
+@enduml

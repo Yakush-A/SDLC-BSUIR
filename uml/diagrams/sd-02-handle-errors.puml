@@ -1,0 +1,95 @@
+@startuml sd-02-handle-errors
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam style strictuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowFontColor #000000
+skinparam TitleFontColor #000000
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #000000
+skinparam NoteFontColor #000000
+skinparam sequenceMessageAlign center
+skinparam SequenceLifeLineBorderColor #000000
+skinparam SequenceGroupBorderColor #000000
+skinparam SequenceGroupBackgroundColor #FFFFFF
+skinparam SequenceGroupFontColor #000000
+skinparam SequenceGroupHeaderFontColor #000000
+skinparam SequenceDividerBackgroundColor #FFFFFF
+skinparam SequenceDividerBorderColor #000000
+skinparam ParticipantBackgroundColor #FFFFFF
+skinparam ParticipantBorderColor #000000
+skinparam ParticipantFontColor #000000
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorBorderColor #000000
+skinparam ActorFontColor #000000
+title SD-02. Handle Errors: обработка ошибок экспорта (расширение SD-01, UC-07)
+autonumber "<b>00"
+
+participant ":ExportPdfButton" as B <<React>>
+participant "Файловая система\nпользователя" as FS <<boundary>>
+participant ":CharacterExport\nController" as C <<controller>>
+participant ":SheetExport\nService" as S <<facade>>
+participant ":TypstRenderer\nClient" as RC
+participant ":RenderApi" as R <<FastAPI>>
+participant ":Workspace\nManager" as W
+
+[-> C : GET /export/pdf
+activate C
+alt нет токена или токен недействителен
+  C --> B : 401 ApiResponse
+else персонаж не найден или чужой
+  C --> B : 404 ApiResponse
+else выполнение запроса
+  C -> S : export(request)
+  activate S
+  alt слот не получен за 10 с
+    S --> C : SheetExportException(BUSY)
+  else Renderer отклонил запрос (400, 401, 413, 422)
+    S -> RC : render(...)
+    activate RC
+    RC -> R : POST /internal/v1/render
+    R --> RC : 4xx
+    RC --> S : RenderException(BAD_REQUEST)
+    deactivate RC
+  else Renderer недоступен или нет слота компиляции
+    S -> RC : render(...)
+    activate RC
+    RC -> R : POST /internal/v1/render
+    R --> RC : 503 или нет соединения
+    RC --> S : RenderException(UNAVAILABLE)
+    deactivate RC
+  else компиляция превысила 12 с
+    S -> RC : render(...)
+    activate RC
+    RC -> R : POST /internal/v1/render
+    activate R
+    R -> W : delete(job)
+    R --> RC : 504
+    deactivate R
+    RC --> S : RenderException(TIMEOUT)
+    deactivate RC
+  else ошибка компиляции или некорректный PDF
+    S -> RC : render(...)
+    activate RC
+    RC -> R : POST /internal/v1/render
+    activate R
+    R -> W : delete(job)
+    R --> RC : 500 (sanitized)
+    deactivate R
+    RC --> S : RenderException(RENDER_FAILED)
+    deactivate RC
+  end
+  S -> S : записать метрику failure и техническое\nсобытие (requestId, код ошибки)
+  S --> C : SheetExportException(kind)
+  deactivate S
+  C --> B : 503, 504 или 500 ApiResponse\n(без stderr, путей и данных персонажа)
+end
+deactivate C
+B -> FS : writable.abort() (если запись была открыта)
+B -> B : state = failed, затем idle
+B -->] : toast «Не удалось создать PDF.\nПовторите попытку.»
+@enduml

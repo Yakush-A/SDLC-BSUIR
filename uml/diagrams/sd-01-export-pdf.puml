@@ -1,0 +1,118 @@
+@startuml sd-01-export-pdf
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam style strictuml
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam ArrowColor #000000
+skinparam ArrowFontColor #000000
+skinparam TitleFontColor #000000
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam NoteBackgroundColor #FFFFFF
+skinparam NoteBorderColor #000000
+skinparam NoteFontColor #000000
+skinparam sequenceMessageAlign center
+skinparam SequenceLifeLineBorderColor #000000
+skinparam SequenceGroupBorderColor #000000
+skinparam SequenceGroupBackgroundColor #FFFFFF
+skinparam SequenceGroupFontColor #000000
+skinparam SequenceGroupHeaderFontColor #000000
+skinparam SequenceDividerBackgroundColor #FFFFFF
+skinparam SequenceDividerBorderColor #000000
+skinparam ParticipantBackgroundColor #FFFFFF
+skinparam ParticipantBorderColor #000000
+skinparam ParticipantFontColor #000000
+skinparam ActorBackgroundColor #FFFFFF
+skinparam ActorBorderColor #000000
+skinparam ActorFontColor #000000
+title SD-01. Диаграмма последовательности: экспорт листа персонажа в PDF (UC-01)
+autonumber "<b>00"
+
+actor "Игрок" as P
+box "Frontend (браузер)" #FFFFFF
+  participant ":ExportPdfButton" as B <<React>>
+  participant "Файловая система\nпользователя" as FS <<boundary>>
+end box
+box "Backend (Spring Boot)" #FFFFFF
+  participant ":CharacterExport\nController" as C <<controller>>
+  participant ":SheetExport\nService" as S <<facade>>
+  participant ":DndSheet\nProvider" as D <<adapter>>
+  participant ":Portrait\nLoader" as PL
+  participant ":TypstRenderer\nClient" as RC
+  participant ":Metrics\nи журнал" as M
+end box
+box "Typst Renderer (контейнер)" #FFFFFF
+  participant ":RenderApi" as R <<FastAPI>>
+  participant ":Workspace\nManager" as W
+  participant ":TypstProcess\nRunner" as T
+  participant ":PdfMetadata\nFinalizer" as F
+end box
+
+P -> B : ClickExport
+activate B
+B -> FS : showSaveFilePicker(suggestedName)
+activate FS
+alt пользователь отменил диалог
+  FS --> B : AbortError
+  B --> P : кнопка снова активна
+else файл выбран
+  FS --> B : FileSystemFileHandle
+  deactivate FS
+  B -> B : state = preparing,\nсохранить отложенные правки
+  B -> C : GET /api/v1/characters/{id}/export/pdf\nAuthorization: Bearer JWT
+  activate C
+  C -> S : export(ExportRequest)
+  activate S
+  S -> S : acquire(slot), ожидание до 10 с
+  S -> D : build(request)
+  activate D
+  D --> S : SheetModel
+  deactivate D
+  opt задан portraitUrl
+    S -> PL : load(portraitUrl)
+    activate PL
+    note right of PL : {5 с, 5 МБ, до 3\nперенаправлений}
+    PL --> S : проверенные байты\nили Placeholder
+    deactivate PL
+  end
+  S -> RC : render(sheetModel, portrait)
+  activate RC
+  RC -> R : POST /internal/v1/render\n(manifest, portrait, token)
+  activate R
+  R -> R : проверить token, templateId, размер
+  R -> W : createUnique()
+  activate W
+  create "job:Workspace" as J
+  W -> J : <<create>>
+  W --> R : job
+  deactivate W
+  R -> T : compile(job)
+  activate T
+  T -> J : typst compile\n(root, font-path, без системных шрифтов)
+  note right of T : {таймаут компиляции\n<= 12 с}
+  T --> R : result.pdf
+  deactivate T
+  R -> F : setTitleAndCreator(result.pdf)
+  activate F
+  F --> R : PDF проверен
+  deactivate F
+  R -> W : delete(job)
+  activate W
+  W -> J !! : <<destroy>>
+  deactivate W
+  R --> RC : 200 application/pdf
+  deactivate R
+  RC --> S : PDF bytes
+  deactivate RC
+  S ->> M : record(duration, success, pages, bytes)
+  S --> C : RenderedDocument
+  deactivate S
+  C --> B : 200 application/pdf\nContent-Disposition: attachment
+  deactivate C
+  B -> FS : createWritable().write(blob).close()
+  B --> P : toast «PDF сохранён»
+end
+ref over B, C, S, RC, R : Handle Errors (SD-02):\nлюбая ошибка на шагах 6–32
+deactivate B
+@enduml
