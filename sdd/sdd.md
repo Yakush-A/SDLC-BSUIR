@@ -563,7 +563,7 @@ on any error: return Placeholder
 
 *Рисунок 13 — состояния кнопки «Export to PDF». Исходник: `uml/diagrams/sm-01-export-button.puml`.*
 
-Сохраняются состояния `Disabled`, `Idle`, `ChoosingLocation`, составное `Busy` (`Preparing → Generating → Writing`) и `Failed`. Переходы: `CharacterLoaded`/`CharacterUnloaded`, `ClickExport`, `LocationChosen`, `UserCancelled`, `EditsSaved`, `PdfReceived`, `FileWritten`, `Error`, `Dismiss`. В состоянии `Generating` frontend ожидает ответ backend, внутри которого выполняется обращение к Typst Renderer. Повторный `ClickExport` вне `Idle` игнорируется. При отсутствии `showSaveFilePicker` состояние `ChoosingLocation` пропускается, скачивание выполняется через `<a download>`; при ошибке вызывается `abort()` открытой записи. Исходная SysML-схема процесса остаётся в `srs/diagrams/04-export-flow.png`.
+Сохраняются состояния `Disabled`, `Idle`, `ChoosingLocation`, `Busy` с внутренней последовательностью `Preparing → Generating → Writing` и `Failed`. Переходы: `CharacterLoaded`/`CharacterUnloaded`, `ClickExport`, `LocationChosen`, `UserCancelled`, `FileWritten`, `Error`, `Dismiss`. В состоянии `Busy` frontend ожидает ответ backend, внутри которого выполняется обращение к Typst Renderer. Повторный `ClickExport` вне `Idle` игнорируется. При отсутствии `showSaveFilePicker` состояние `ChoosingLocation` пропускается, скачивание выполняется через `<a download>`; при ошибке вызывается `abort()` открытой записи. Исходная SysML-схема процесса остаётся в `srs/diagrams/04-export-flow.png`.
 - **More Information**: REQ-INT-007, REQ-FUNC-006, REQ-FUNC-007, REQ-FUNC-021; `uml/use-cases.md`; DEC-003, DEC-007.
 
 ### DV-STA-02-render-job
@@ -577,7 +577,7 @@ on any error: return Placeholder
 
 *Рисунок 14 — состояния задания рендеринга. Исходник: `uml/diagrams/sm-02-render-job.puml`.*
 
-Задание проходит состояния `Received → Validating → WaitingForSlot → Job → Completed | Failed | TimedOut`; при недопустимых данных или отсутствии слота оно переходит в `Rejected`. Составное состояние `Job` содержит `Prepared → Compiling → Finalizing` и имеет выходное действие `WorkspaceManager.delete(job)`. Проверяются service token, `templateId` из allow-list, размер и тип вложения, время компиляции (12 с) и корректность итогового PDF. Ошибки возвращаются с кодом `400/401/413/422`, `503`, `504` или `500` без пользовательских данных; временный каталог удаляется в любом случае.
+Задание проходит состояния `Received → Validating → WaitingForSlot → Job → Completed | Failed | TimedOut`; при недопустимых данных или отсутствии слота оно переходит в `Rejected`. Состояние `Job` включает последовательность `Prepared → Compiling → Finalizing` и выходное действие `WorkspaceManager.delete(job)`. Проверяются service token, `templateId` из allow-list, размер и тип вложения, время компиляции (12 с) и корректность итогового PDF. Ошибки возвращаются с кодом `400/401/413/422`, `503`, `504` или `500` без пользовательских данных; временный каталог удаляется в любом случае.
 - **More Information**: REQ-INT-011; REQ-SEC-006; REQ-REL-003; REQ-PERF-002; `uml/use-cases.md`; DEC-001, DEC-004, DEC-007.
 
 ### DV-CON-01-concurrency

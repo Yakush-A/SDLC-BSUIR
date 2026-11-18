@@ -2,8 +2,9 @@
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam style strictuml
+skinparam linetype ortho
 skinparam defaultFontName "DejaVu Sans"
-skinparam defaultFontSize 12
+skinparam defaultFontSize 11
 skinparam ArrowColor #000000
 skinparam ArrowFontColor #000000
 skinparam TitleFontColor #000000
@@ -13,6 +14,8 @@ skinparam NoteBackgroundColor #FFFFFF
 skinparam NoteBorderColor #000000
 skinparam NoteFontColor #000000
 skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 10
+skinparam BoxPadding 10
 skinparam SequenceLifeLineBorderColor #000000
 skinparam SequenceGroupBorderColor #000000
 skinparam SequenceGroupBackgroundColor #FFFFFF
@@ -26,70 +29,85 @@ skinparam ParticipantFontColor #000000
 skinparam ActorBackgroundColor #FFFFFF
 skinparam ActorBorderColor #000000
 skinparam ActorFontColor #000000
-title SD-02. Handle Errors: обработка ошибок экспорта (расширение SD-01, UC-07)
-autonumber "<b>00"
+hide footbox
+title SD-02. Обработка ошибок экспорта (расширение SD-01, UC-07)
 
-participant ":ExportPdfButton" as B <<React>>
-participant "Файловая система\nпользователя" as FS <<boundary>>
-participant ":CharacterExport\nController" as C <<controller>>
-participant ":SheetExport\nService" as S <<facade>>
-participant ":TypstRenderer\nClient" as RC
-participant ":RenderApi" as R <<FastAPI>>
-participant ":Workspace\nManager" as W
+actor "Игрок" as P
 
-[-> C : GET /export/pdf
-activate C
-alt нет токена или токен недействителен
-  C --> B : 401 ApiResponse
+box "Frontend (браузер)" #FFFFFF
+  participant "Кнопка\nExportPdfButton" as UI <<boundary>>
+  participant "Файловая система\nпользователя" as FS <<boundary>>
+end box
+
+box "Backend (Spring Boot)" #FFFFFF
+  participant "CharacterExport\nController" as API <<control>>
+  participant "SheetExport\nService" as SVC <<control>>
+  participant "TypstRenderer\nClient" as RC
+end box
+
+participant "Typst Renderer" as R <<system>>
+
+P -> UI : нажать «Export to PDF»
+activate UI
+UI -> FS : showSaveFilePicker(имя файла)
+activate FS
+FS --> UI : FileSystemFileHandle
+deactivate FS
+
+UI -> API : GET /characters/{id}/export/pdf\nAuthorization: Bearer JWT
+activate API
+
+alt JWT отсутствует или недействителен
+  API --> UI : 401 ApiResponse
 else персонаж не найден или чужой
-  C --> B : 404 ApiResponse
-else выполнение запроса
-  C -> S : export(request)
-  activate S
-  alt слот не получен за 10 с
-    S --> C : SheetExportException(BUSY)
-  else Renderer отклонил запрос (400, 401, 413, 422)
-    S -> RC : render(...)
+  API --> UI : 404 ApiResponse
+else запрос авторизован
+  API -> SVC : export(characterId)
+  activate SVC
+
+  alt нет свободного слота генерации
+    SVC --> API : SheetExportException(BUSY)
+  else слот получен
+    SVC -> RC : render(SheetModel, portrait)
     activate RC
-    RC -> R : POST /internal/v1/render
-    R --> RC : 4xx
-    RC --> S : RenderException(BAD_REQUEST)
-    deactivate RC
-  else Renderer недоступен или нет слота компиляции
-    S -> RC : render(...)
-    activate RC
-    RC -> R : POST /internal/v1/render
-    R --> RC : 503 или нет соединения
-    RC --> S : RenderException(UNAVAILABLE)
-    deactivate RC
-  else компиляция превысила 12 с
-    S -> RC : render(...)
-    activate RC
-    RC -> R : POST /internal/v1/render
+    RC -> R : POST /internal/v1/render\n(manifest, portrait, service token)
     activate R
-    R -> W : delete(job)
-    R --> RC : 504
+
+    alt Renderer отклонил запрос
+      R --> RC : 400, 401, 413 или 422
+      RC --> SVC : RenderException(BAD_REQUEST)
+    else Renderer недоступен
+      R --> RC : 503 или нет соединения
+      RC --> SVC : RenderException(UNAVAILABLE)
+    else таймаут компиляции
+      R -> R : остановить typst\nи удалить рабочий каталог
+      R --> RC : 504
+      RC --> SVC : RenderException(TIMEOUT)
+    else ошибка компиляции или некорректный PDF
+      R -> R : удалить рабочий каталог
+      R --> RC : 500 (sanitized)
+      RC --> SVC : RenderException(RENDER_FAILED)
+    end
+
     deactivate R
-    RC --> S : RenderException(TIMEOUT)
-    deactivate RC
-  else ошибка компиляции или некорректный PDF
-    S -> RC : render(...)
-    activate RC
-    RC -> R : POST /internal/v1/render
-    activate R
-    R -> W : delete(job)
-    R --> RC : 500 (sanitized)
-    deactivate R
-    RC --> S : RenderException(RENDER_FAILED)
     deactivate RC
   end
-  S -> S : записать метрику failure и техническое\nсобытие (requestId, код ошибки)
-  S --> C : SheetExportException(kind)
-  deactivate S
-  C --> B : 503, 504 или 500 ApiResponse\n(без stderr, путей и данных персонажа)
+
+  SVC -> SVC : записать метрику failure\nи событие журнала (requestId, код)
+  SVC --> API : SheetExportException(kind)
+  deactivate SVC
+  API --> UI : 503, 504 или 500 ApiResponse\nбез технических деталей
 end
-deactivate C
-B -> FS : writable.abort() (если запись была открыта)
-B -> B : state = failed, затем idle
-B -->] : toast «Не удалось создать PDF.\nПовторите попытку.»
+deactivate API
+
+opt запись файла уже открыта
+  UI -> FS : abort()
+  activate FS
+  FS --> UI : запись отменена
+  deactivate FS
+end
+
+UI -> UI : state = Failed → Idle
+UI --> P : toast «Не удалось создать PDF.\nПовторите попытку.»
+deactivate UI
 @enduml

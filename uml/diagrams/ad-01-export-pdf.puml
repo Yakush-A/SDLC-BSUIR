@@ -2,6 +2,7 @@
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
 skinparam style strictuml
+skinparam linetype ortho
 skinparam defaultFontName "DejaVu Sans"
 skinparam defaultFontSize 12
 skinparam ArrowColor #000000
